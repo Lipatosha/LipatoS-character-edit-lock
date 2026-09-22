@@ -1,0 +1,32 @@
+{
+  "id": "lipatos-character-edit-lock",
+  "title": "LipatoS - Запрет редактирования персонажа",
+  "description": "Запрещает обычным игрокам включать режим редактирования карточки персонажа. Повышение уровня и штатные элементы развития персонажа остаются доступными. ГМ и Assistant GM работают без ограничений.",
+  "version": "1.0.0",
+  "authors": [
+    {
+      "name": "LipatoS"
+    }
+  ],
+  "compatibility": {
+    "minimum": "14",
+    "verified": "14"
+  },
+  "relationships": {
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "system",
+        "compatibility": {
+          "minimum": "6.0.3",
+          "verified": "6.0.3"
+        }
+      }
+    ]
+  },
+  "esmodules": [
+    "scripts/main.js"
+  ],
+  "manifest": "https://raw.githubusercontent.com/Lipatosha/LipatoS-character-edit-lock/main/module.json",
+  "download": "https://raw.githubusercontent.com/Lipatosha/LipatoS-character-edit-lock/main/lipatos-character-edit-lock-v1.0.0.zip"
+}
