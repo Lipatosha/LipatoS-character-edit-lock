@@ -1,0 +1,129 @@
+name: Update for D&D5e 6.0.5
+
+on:
+  push:
+    paths:
+      - '.dnd605-ready'
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update compatibility and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          import json, re, zipfile
+          from pathlib import Path
+
+          manifest_path = Path("module.json")
+          data = json.loads(manifest_path.read_text(encoding="utf-8"))
+          old = str(data.get("version", "1.0.0"))
+
+          m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(.*)", old)
+          if not m:
+              raise SystemExit(f"Не удалось определить версию: {old}")
+          major, minor, patch, suffix = m.groups()
+          new = f"{major}.{minor}.{int(patch)+1}{suffix}"
+          data["version"] = new
+
+          relationships = data.setdefault("relationships", {})
+          systems = relationships.setdefault("systems", [])
+          dnd = next((s for s in systems if s.get("id") == "dnd5e"), None)
+          if dnd is None:
+              dnd = {
+                  "id": "dnd5e",
+                  "type": "system",
+                  "compatibility": {"minimum": "6.0.0", "verified": "6.0.5"}
+              }
+              systems.append(dnd)
+          else:
+              comp = dnd.setdefault("compatibility", {})
+              comp.setdefault("minimum", "6.0.0")
+              comp["verified"] = "6.0.5"
+              comp.pop("maximum", None)
+
+          download = str(data.get("download") or "")
+          old_zip = download.rsplit("/", 1)[-1] if download else ""
+          if old_zip and old in old_zip:
+              new_zip = old_zip.replace(old, new)
+          else:
+              repo_slug = Path.cwd().name.lower()
+              new_zip = f"{repo_slug}-v{new}.zip"
+
+          if download:
+              data["download"] = download.rsplit("/", 1)[0] + "/" + new_zip
+          else:
+              import os
+              data["download"] = f"https://raw.githubusercontent.com/{os.environ['GITHUB_REPOSITORY']}/main/{new_zip}"
+
+          manifest_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+          readme = Path("README.md")
+          if readme.exists():
+              txt = readme.read_text(encoding="utf-8")
+              txt = txt.replace(f"**{old}**", f"**{new}**", 1)
+              lines = []
+              for line in txt.splitlines():
+                  if "D&D" in line and "6.0." in line:
+                      matches = list(re.finditer(r"6\.0\.\d+", line))
+                      if matches:
+                          last = matches[-1]
+                          line = line[:last.start()] + "6.0.5" + line[last.end():]
+                  lines.append(line)
+              readme.write_text("\n".join(lines) + ("\n" if txt.endswith("\n") else ""), encoding="utf-8")
+
+          changelog = Path("CHANGELOG.md")
+          entry = (
+              f"## {new}\n\n"
+              "- Добавлена совместимость с D&D5e 6.0.5.\n"
+              "- Обновлены манифест и установочный архив модуля.\n"
+              "- Рабочая логика модуля сохранена без изменений.\n\n"
+          )
+          if changelog.exists():
+              txt = changelog.read_text(encoding="utf-8")
+              first_nl = txt.find("\n")
+              if first_nl >= 0:
+                  txt = txt[:first_nl+1] + "\n" + entry + txt[first_nl+1:].lstrip("\n")
+              else:
+                  txt = txt + "\n\n" + entry
+              changelog.write_text(txt, encoding="utf-8")
+
+          for p in Path(".").glob("*.zip"):
+              p.unlink()
+
+          excluded_top = {".git", ".github"}
+          excluded_files = {"README.md", "CHANGELOG.md", ".dnd605-ready"}
+          with zipfile.ZipFile(new_zip, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+              for p in sorted(Path(".").rglob("*")):
+                  if not p.is_file():
+                      continue
+                  rel = p.as_posix()
+                  if rel == new_zip or p.name.endswith(".zip"):
+                      continue
+                  if rel in excluded_files:
+                      continue
+                  if rel.split("/", 1)[0] in excluded_top:
+                      continue
+                  z.write(p, rel)
+
+          print(f"{old} -> {new}; archive: {new_zip}")
+          PY
+
+      - name: Commit update
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git rm --ignore-unmatch .dnd605-ready .github/workflows/update-dnd605.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Обновить совместимость с D&D5e 6.0.5"
+          git push
